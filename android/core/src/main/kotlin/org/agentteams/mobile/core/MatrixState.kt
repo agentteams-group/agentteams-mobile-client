@@ -71,7 +71,7 @@ data class MatrixState(
     fun apply(response: SyncResponse): MatrixState {
         var direct = directRooms
         response.account_data.events.filter { it.type == "m.direct" }.forEach { event ->
-            direct = event.content.mapValues { (_, value) -> (value as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull } }
+            direct = event.content.mapValues { (_, value) -> (value as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { primitive -> primitive.isString }?.content } }
         }
         val nextRooms = rooms.toMutableMap()
         val nextInvites = invites.toMutableMap()

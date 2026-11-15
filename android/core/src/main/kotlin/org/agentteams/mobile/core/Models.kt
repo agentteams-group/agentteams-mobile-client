@@ -7,7 +7,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.UUID
 
 val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull
+fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 fun JsonObject.obj(key: String): JsonObject? = get(key) as? JsonObject
 
 class ServerAddress(raw: String) {

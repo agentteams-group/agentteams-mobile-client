@@ -122,6 +122,11 @@ class ApiTest {
             put("request_id", "one\n/approve two"); put("tool_name", "shell")
         } }
         assertNull(Approval.parse(ChatMessage("bad", "@bot:s", 0, "", bad), "!r:s"))
+        val numericId = buildJsonObject { putJsonObject("org.agentteams.approval") {
+            put("version", 1); put("runtime", "qwenpaw"); put("status", "pending")
+            put("request_id", 1); put("tool_name", "shell")
+        } }
+        assertNull(Approval.parse(ChatMessage("numeric", "@bot:s", 0, "", numericId), "!r:s"))
     }
 
     @Test fun answeredApprovalDoesNotHideAnotherRequest() {
