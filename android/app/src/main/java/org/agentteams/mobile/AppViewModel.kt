@@ -20,6 +20,10 @@ data class AppState(
     val assistants: List<Assistant> get() = managers + workers
     val rooms: List<ChatRoom> get() = matrix.rooms.values.sortedByDescending { it.messages.lastOrNull()?.timestamp ?: 0 }
     val approvals: List<Approval> get() = pendingApprovals(matrix, assistants, session?.userId.orEmpty(), submitted)
+    val questions: List<QuestionRequest> get() = rooms.flatMap { room ->
+        room.messages.filter { it.sender != session?.userId && assistants.any { assistant -> assistant.matrixUserID == it.sender } }
+            .flatMap { QuestionRequest.parse(it, room.id) }.filter { !it.expired() && !it.resolved(room.messages) }
+    }
 }
 
 class AppViewModel(private val vault: SessionVault, private val api: ApiClient = ApiClient()) : ViewModel() {
@@ -206,6 +210,14 @@ class AppViewModel(private val vault: SessionVault, private val api: ApiClient =
             if (error is CancellationException) throw error
             updateFor(s) { it.copy(error = error.localizedMessage) }; return false
         } finally { updateFor(s) { it.copy(sending = false) } }
+    }
+    suspend fun answer(question: QuestionRequest, selected: Map<String, Set<String>>, custom: Map<String, String>, transactionId: String): Boolean {
+        val s = mutable.value.session ?: return false
+        if (mutable.value.questions.none { it.id == question.id } || question.id in mutable.value.submitted) return false
+        val response = question.response(selected, custom, s.userId) ?: return false
+        val sent = send(question.roomId, response.first, question.sender, transactionId, response.second)
+        if (sent) updateFor(s) { it.copy(submitted = it.submitted + question.id) }
+        return sent
     }
     suspend fun answer(approval: Approval, approve: Boolean, transactionId: String): Boolean {
         val s = mutable.value.session ?: return false

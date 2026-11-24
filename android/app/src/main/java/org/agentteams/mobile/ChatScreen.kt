@@ -154,8 +154,38 @@ import java.util.UUID
                 MarkdownText(message.body, Modifier.padding(14.dp))
             }
             if (approval != null) ApprovalCard(approval, state.sending, model)
+            state.questions.filter { it.eventId == message.id && it.roomId == state.selectedRoom?.id }.forEach {
+                QuestionCard(it, state, model)
+            }
             if (approval == null && message.content.obj("org.agentteams.approval")?.text("status") == "pending" &&
                 Approval.parse(message, state.selectedRoom?.id.orEmpty())?.id in state.submitted) Text("已提交，等待运行时确认", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable private fun QuestionCard(request: QuestionRequest, state: AppState, model: AppViewModel) {
+    val scope = rememberCoroutineScope()
+    val transaction = rememberSaveable(request.id) { UUID.randomUUID().toString() }
+    var selected by remember(request.id) { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+    var custom by remember(request.id) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val submitted = request.id in state.submitted
+    OutlinedCard {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("等待人工 · 需要你的回答", style = MaterialTheme.typography.titleSmall)
+            request.questions.forEach { question ->
+                Text(question.text)
+                question.options.forEach { (id, label) ->
+                    val choices = selected[question.id].orEmpty()
+                    FilterChip(selected = id in choices, enabled = !submitted && !state.sending, label = { Text(label) }, onClick = {
+                        selected = selected + (question.id to if (id in choices) choices - id else if (question.multiSelect) choices + id else setOf(id))
+                    })
+                }
+                OutlinedTextField(custom[question.id].orEmpty(), { custom = custom + (question.id to it) },
+                    enabled = !submitted && !state.sending, label = { Text("补充回答") })
+            }
+            if (submitted) Text("已提交，等待运行时确认", style = MaterialTheme.typography.labelSmall)
+            else Button(enabled = !state.sending && request.response(selected, custom, state.session?.userId.orEmpty()) != null,
+                onClick = { scope.launch { model.answer(request, selected, custom, transaction) } }) { Text("提交回答") }
         }
     }
 }

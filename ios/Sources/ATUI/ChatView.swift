@@ -149,9 +149,49 @@ private struct MessageBubble: View {
                 if let approval = store.approvals.first(where: { $0.eventID == message.id && $0.roomID == roomID }) {
                     ApprovalActions(store: store, approval: approval)
                 }
+                ForEach(store.questions.filter { $0.eventID == message.id && $0.roomID == roomID }) { question in
+                    QuestionActions(store: store, request: question)
+                }
             }
             if !mine { Spacer(minLength: 28) }
         }
+    }
+}
+
+private struct QuestionActions: View {
+    var store: AppStore
+    let request: QuestionRequest
+    @State private var selected: [String: Set<String>] = [:]
+    @State private var custom: [String: String] = [:]
+    @State private var transaction = UUID().uuidString
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("等待人工 · 需要你的回答", systemImage: "questionmark.bubble")
+            ForEach(request.questions) { question in
+                Text(question.text).font(.subheadline)
+                ForEach(question.options) { option in
+                    Button {
+                        var choices = selected[question.id] ?? []
+                        if choices.contains(option.id) { choices.remove(option.id) }
+                        else if question.multiSelect { choices.insert(option.id) }
+                        else { choices = [option.id] }
+                        selected[question.id] = choices
+                    } label: {
+                        Label(option.label, systemImage: (selected[question.id] ?? []).contains(option.id) ? "checkmark.circle.fill" : "circle")
+                    }
+                }
+                TextField("补充回答", text: Binding(get: { custom[question.id] ?? "" }, set: { custom[question.id] = $0 }))
+                    .textFieldStyle(.roundedBorder)
+            }
+            if store.submittedApprovals.contains(request.id) {
+                Text("已提交，等待运行时确认").font(.caption)
+            } else {
+                Button("提交回答") { Task { _ = await store.answer(request, selected: selected, custom: custom, transactionID: transaction) } }
+                    .disabled(store.sending || request.response(selected: selected, custom: custom, actor: store.session?.userID ?? "") == nil)
+            }
+        }
+        .padding(12).background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .disabled(store.submittedApprovals.contains(request.id))
     }
 }
 
