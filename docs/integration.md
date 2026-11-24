@@ -2,6 +2,16 @@
 
 移动端只消费已有 AT 服务。iOS 和 Android 分别实现 UI、系统凭据存储和生命周期管理，后续鸿蒙也遵守同一约定；本文件记录共用的身份与接口约定。
 
+## HITL
+
+移动端按两类协议处理人工交互，不为新 Harness 增加命令分支。
+
+- Ask User 使用 `org.agentteams.run` 的 `confirmation` 块。保留问题、选项及多选 ID，答复为 `com.agentteams.answer`，包含 `kind=ask_user`、`confirmation_id`、目标 `agent_id`、可读答案和逐题 `responses`。原生 Ask User 与 TeamHarness `request_attention` 共用同一路径。
+- Tool Approval 使用 `org.agentteams.approval`。声明 `reply_format=com.agentteams.answer` 的请求必须有上下文，答复为 `kind=tool_approval`、请求 ID、`context_id`、目标 Agent 及 `approved/rejected`。原生协议转换在 Adapter 内完成；未声明新格式的历史请求保留旧命令兼容。
+- 两类请求均绑定源 Agent、房间、请求及适用的上下文，答案中的 `actor` 不授予权限。提交成功只表示消息进入房间。问答回执的 `answered/cancelled/expired` 和审批回执的 `approved/rejected/cancelled/expired` 必须来自原请求的拥有者。原 Turn 是否恢复由运行时确认，移动端不推断工具已经执行。
+
+等待人工期间使用 `waiting_user` 语义；原生 Turn 可暂停在等待点，非原生 Turn 从持久化决策继续。超时后不能再提交；取消、重启、旧请求及重复答复由 Adapter 核对，不能把旧审批应用到新的工具执行。
+
 ## 身份与服务地址
 
 用户配置设备可访问的 Matrix 与 Controller 根地址，可以带反向代理路径前缀。地址不可包含用户名、密码、查询串或 fragment。不能把 Docker 容器内部主机名直接当作真机地址。

@@ -32,6 +32,14 @@ public final class AppStore {
 
     var rooms: [ChatRoom] { matrix.rooms.values.sorted { $0.lastActivity > $1.lastActivity } }
     var allAssistants: [Assistant] { managers + workers }
+    var questions: [QuestionRequest] {
+        rooms.flatMap { room in
+            room.messages.filter { message in
+                message.sender != session?.userID && allAssistants.contains { $0.matrixUserID == message.sender }
+            }.flatMap { QuestionRequest.parse($0, roomID: room.id) }
+                .filter { !$0.expired && !$0.resolved(in: room.messages) }
+        }
+    }
     var approvals: [Approval] {
         rooms.flatMap { room in
             room.messages.compactMap { message -> Approval? in
@@ -232,6 +240,14 @@ public final class AppStore {
             _ = try await api.send(s, room: room, body: body, transactionID: transactionID, mention: target, extra: extra)
             return session?.id == s.id
         } catch { self.error = error.localizedDescription; return false }
+    }
+
+    func answer(_ question: QuestionRequest, selected: [String: Set<String>], custom: [String: String], transactionID: String) async -> Bool {
+        guard let session, questions.contains(where: { $0.id == question.id }), !submittedApprovals.contains(question.id),
+              let (body, content) = question.response(selected: selected, custom: custom, actor: session.userID) else { return false }
+        let sent = await send(room: question.roomID, text: body, target: question.sender, transactionID: transactionID, extra: content)
+        if sent { submittedApprovals.insert(question.id) }
+        return sent
     }
 
     func answer(_ approval: Approval, approve: Bool, transactionID: String) async -> Bool {

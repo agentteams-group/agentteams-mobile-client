@@ -1,0 +1,24 @@
+name: iOS checks
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'scripts/check.sh'
+      - '.github/workflows/ios-check.yml'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require the iOS Simulator SDK
+        run: xcrun --sdk iphonesimulator --show-sdk-path
+      - name: Test packages and build the iOS application
+        run: bash scripts/check.sh

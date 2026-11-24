@@ -6,10 +6,11 @@ data class Approval(
     val roomId: String, val eventId: String, val sender: String,
     val runtime: String, val requestId: String, val contextId: String,
     val tool: String, val parameters: String, val expiresAt: Long?,
+    val structuredReply: Boolean = false,
 ) {
     val id: String get() = "$roomId/$sender/$runtime/$contextId/$requestId"
     fun expired(now: Long = System.currentTimeMillis()): Boolean = expiresAt?.let { it <= now } ?: false
-    fun command(approve: Boolean): String = when (runtime) {
+    fun command(approve: Boolean): String = if (structuredReply) "${if (approve) "批准" else "拒绝"}请求 $requestId" else when (runtime) {
         "openclaw" -> "/approve $requestId ${if (approve) "allow-once" else "deny"}"
         "qwenpaw" -> "/approval ${if (approve) "approve" else "deny"} $requestId"
         "codex" -> "/${if (approve) "approve" else "reject"} $requestId $contextId"
@@ -20,6 +21,9 @@ data class Approval(
         putJsonObject("com.agentteams.answer") {
             put("confirmation_id", requestId); put("answer", if (approve) "approved" else "rejected")
             put("actor", actor); put("tool_name", tool)
+            if (structuredReply) {
+                put("kind", "tool_approval"); put("context_id", contextId); put("agent_id", sender)
+            }
         }
     }
     companion object {
@@ -27,14 +31,17 @@ data class Approval(
             val data = message.content.obj("org.agentteams.approval") ?: return null
             if ((data["version"] as? JsonPrimitive)?.intOrNull != 1 || data.text("status") != "pending") return null
             val runtime = data.text("runtime") ?: return null
-            if (runtime !in listOf("openclaw", "qwenpaw", "hermes", "deepseek-harness", "openhuman", "codex")) return null
+            val structured = data.text("reply_format") == "com.agentteams.answer"
+            if (!structured && runtime !in listOf("openclaw", "qwenpaw", "hermes", "deepseek-harness", "openhuman", "codex")) return null
             val request = data.text("request_id")?.takeIf { it.matches(Regex("[A-Za-z0-9_.:-]+")) } ?: return null
             val context = data.text("context_id") ?: ""
-            if (runtime in listOf("hermes", "deepseek-harness", "openhuman", "codex") &&
+            if (structured && !context.matches(Regex("[A-Za-z0-9_.:-]+"))) return null
+            if (!structured && runtime in listOf("hermes", "deepseek-harness", "openhuman", "codex") &&
                 !context.matches(Regex(if (runtime == "codex") "[A-Za-z0-9_.:-]+" else "[A-Za-z0-9_.-]+"))) return null
             val tool = data.text("tool_name")?.takeIf { it.isNotEmpty() } ?: return null
             return Approval(roomId, message.id, message.sender, runtime, request, context, tool,
-                data.text("parameters") ?: "", (data["expires_at"] as? JsonPrimitive)?.longOrNull)
+                data.text("parameters") ?: "", (data["expires_at"] as? JsonPrimitive)?.longOrNull,
+                data.text("reply_format") == "com.agentteams.answer")
         }
     }
 }
